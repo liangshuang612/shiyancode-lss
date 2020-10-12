@@ -1,0 +1,209 @@
+相似度计算：
+def euclidSim(inA,inB):
+    return 1.0/(1.0+la.norm(inA-inB))
+def pearsSim(inA,inB):
+    if len(inA)<3:
+        return 1.0
+    return 0.5+0.5*corrcoef(inA,inB,rowvar=0)[0][1]    #rowvar=0表示每列是一个变量，求列之间的相关系数，corrcoef返回的是2*2的对称方阵,[0][1]才能表示inA和inB的相关系数
+def cosSim(inA,inB):
+    num=float(inA.T*inB)
+    denom=la.norm(inA)*la.norm(inB)
+    return 0.5+0.5*(num/denom)
+基于菜品相似度的推荐引擎（用的是原始数据集，没有使用SVD）：
+
+def standEst(dataMat,userNum,simMeas,itemNum):
+    n=shape(dataMat)[1]
+    simTotal=0.0
+    ratSimTotal=0.0
+    for i in range(n):
+        userRating=dataMat[userNum,i]
+        if userRating==0:
+            continue
+        overLap=nonzero(logical_and(dataMat[:,i].A>0,dataMat[:,itemNum].A>0))[0]
+        if len(overLap)==0:
+            similarity=0
+        else:
+            similarity=simMeas(dataMat[overLap,i],dataMat[overLap,itemNum])
+        print('%d和%d的相似性为:%f'%(itemNum,i,similarity))
+        simTotal+=similarity
+        ratSimTotal+=similarity*userRating
+    if simTotal==0:
+        return 0
+    else:
+        return ratSimTotal/simTotal
+def recommend(dataMat,userNum,N=3,simMeas=cosSim,estMethod=standEst):
+    unratedItems=nonzero(dataMat[userNum,:].A==0)[1]
+    if len(unratedItems)==0:
+        print('已经评价过所有物品了。')
+    itemScores=[]
+    for item in unratedItems:
+        estimatedScore=estMethod(dataMat,userNum,simMeas,item)
+        itemScores.append((item,estimatedScore))
+    return sorted(itemScores,key=lambda i:i[1],reverse=True)[:N]
+ 基于SVD的评分估计：
+
+def svdEst(dataMat, user, simMeas, item):
+    n = shape(dataMat)[1]
+    simTotal = 0.0
+    ratSimTotal = 0.0
+    U,Sigma,VT = la.svd(dataMat)
+    # print('sigma:',Sigma[:4])
+    # print('type:',type(Sigma))
+    Sig4 = mat(eye(4)*Sigma[:4])
+    # print('Sig4',Sig4)
+    xformedItems = dataMat.T * U[:,:4] * Sig4.I     #没看懂，n*m m*4 4*4 ==>n*4 11个特征，原数据集转换为11*4的数据集
+    # print('xformedItems:',xformedItems)
+    # print('shape:',shape(xformedItems))
+    for j in range(n):
+        userRating = dataMat[user,j]
+        if userRating == 0 or j==item: continue
+        similarity = simMeas(xformedItems[item,:].T,xformedItems[j,:].T)
+        print('%d和%d的相似性为:%f'%(item,j,similarity))
+        simTotal += similarity
+        ratSimTotal += similarity * userRating
+    if simTotal == 0:
+        return 0
+    else:
+        return ratSimTotal/simTotal
+加载数据集：
+def loadExData2():
+    return[[0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 5],
+           [0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 3],
+           [0, 0, 0, 0, 4, 0, 0, 1, 0, 4, 0],
+           [3, 3, 4, 0, 0, 0, 0, 2, 2, 0, 0],
+           [5, 4, 5, 0, 0, 0, 0, 5, 5, 0, 0],
+           [0, 0, 0, 0, 5, 0, 1, 0, 0, 5, 0],
+           [4, 3, 4, 0, 0, 0, 0, 5, 5, 0, 1],
+           [0, 0, 0, 4, 0, 4, 0, 0, 0, 0, 4],
+           [0, 0, 0, 2, 0, 2, 5, 0, 0, 1, 2],
+           [0, 0, 0, 0, 5, 0, 0, 0, 0, 4, 0],
+           [1, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0]]
+ 
+测试：
+if __name__=='__main__':
+    myMat = mat(loadExData2())
+    result = recommend(myMat, 1, simMeas=euclidSim, estMethod=svdEst)
+    print(result)
+输出结果：
+0和3的相似性为:0.612384
+0和5的相似性为:0.554262
+0和10的相似性为:0.557208
+1和3的相似性为:0.636421
+1和5的相似性为:0.569152
+1和10的相似性为:0.570929
+2和3的相似性为:0.607708
+2和5的相似性为:0.550613
+2和10的相似性为:0.553660
+4和3的相似性为:0.526776
+4和5的相似性为:0.504518
+4和10的相似性为:0.503709
+6和3的相似性为:0.543511
+6和5的相似性为:0.455741
+6和10的相似性为:0.447819
+7和3的相似性为:0.605924
+7和5的相似性为:0.553717
+7和10的相似性为:0.557372
+8和3的相似性为:0.606861
+8和5的相似性为:0.552125
+8和10的相似性为:0.555494
+9和3的相似性为:0.557828
+9和5的相似性为:0.513662
+9和10的相似性为:0.510451
+[(4, 3.328675674700045), (9, 3.3247038080937834), (7, 3.3224884985810177)]
+基于SVD的图像压缩：
+
+def printMat(inMat, thresh=0.8):
+    for i in range(32):
+        for k in range(32):
+            if float(inMat[i, k]) > thresh:
+                print(1,end="") #输出不换行
+            else:
+                print(0,end="")
+        print('')
+def imgCompress(numSV=3, thresh=0.8):
+    myl = []
+    for line in open('0_5.txt').readlines():
+        newRow = []
+        for i in range(32):
+            newRow.append(int(line[i]))
+        myl.append(newRow)
+    myMat = mat(myl)
+    print("**********原始数据矩阵**********")
+    printMat(myMat, thresh)
+    U, Sigma, VT = la.svd(myMat)
+    SigRecon = mat(zeros((numSV, numSV)))
+    for k in range(numSV):
+        SigRecon[k, k] = Sigma[k]
+    reconMat= U[:,:numSV]*SigRecon*VT[:numSV,:]
+    print('*****使用%d个奇异值重构的数据矩阵为*****'%numSV)
+    printMat(reconMat, thresh)
+测试：
+if __name__=='__main__':
+    imgCompress(2)
+输出：
+**********原始数据矩阵**********
+00000000000000110000000000000000
+00000000000011111100000000000000
+00000000000111111110000000000000
+00000000001111111111000000000000
+00000000111111111111100000000000
+00000001111111111111110000000000
+00000000111111111111111000000000
+00000000111111100001111100000000
+00000001111111000001111100000000
+00000011111100000000111100000000
+00000011111100000000111110000000
+00000011111100000000011110000000
+00000011111100000000011110000000
+00000001111110000000001111000000
+00000011111110000000001111000000
+00000011111100000000001111000000
+00000001111100000000001111000000
+00000011111100000000001111000000
+00000001111100000000001111000000
+00000001111100000000011111000000
+00000000111110000000001111100000
+00000000111110000000001111100000
+00000000111110000000001111100000
+00000000111110000000011111000000
+00000000111110000000111111000000
+00000000111111000001111110000000
+00000000011111111111111110000000
+00000000001111111111111110000000
+00000000001111111111111110000000
+00000000000111111111111000000000
+00000000000011111111110000000000
+00000000000000111111000000000000
+*****使用2个奇异值重构的数据矩阵为*****
+00000000000000000000000000000000
+00000000000000000000000000000000
+00000000000001111100000000000000
+00000000000011111111000000000000
+00000000000111111111100000000000
+00000000001111111111110000000000
+00000000001111111111110000000000
+00000000011110000000001000000000
+00000000111100000000001100000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001110000000
+00000000111100000000001100000000
+00000000001111111111111000000000
+00000000001111111111110000000000
+00000000001111111111110000000000
+00000000000011111111100000000000
+00000000000011111111000000000000
+00000000000000000000000000000000
